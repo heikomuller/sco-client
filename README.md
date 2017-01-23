@@ -23,7 +23,7 @@ from scocli import SCOClient
 sco = SCOClient()
 ```
 
-The SCOClient has two optional parameter. The first parameter is *api_url* specifying the default SCO-API used by the client instance. Note that the client is not bound to a specific SCO-API. Instead, it allows to access resources managed by different SCO-API's. Respective methods to retrieve and create resources have an (optional) parameter for specifying the SCO-API to use. Only if this parameter is omitted the default SCO-API will be used. By default, the SCOClient will used the [SCO-API at NYU's Center for Data Science](http://cds-swg1.cims.nyu.edu/sco-server/api/v1).
+The SCOClient has two optional parameter. The first parameter is *api_url* specifying the default SCO-API used by the client instance. Note that the client is not bound to a specific SCO-API. Instead, it allows to access resources managed by different SCO-API's. Respective methods to retrieve and create resources have an (optional) parameter for specifying the SCO-API to use. Only if this parameter is omitted the default SCO-API will be used. By default, the SCOClient will used the [SCO-API at NYU's Center for Data Science](http://cds-swg1.cims.nyu.edu:5050/sco-server/api/v1).
 
 The second parameter, *data_dir*, specifies the directory where data files are cached. If omitted, a new temporary directory will be created for each SCOClient instance. Specifying a data directory has the benefit that one is able to (re-)use cached data between different instantiations of the client. Note that it is not recommended to have multiple programs use the same cache directory in parallel as this may corrupt to local cache.
 
