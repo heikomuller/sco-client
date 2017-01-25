@@ -6,6 +6,7 @@ import datetime as dt
 from dateutil import tz
 import json
 import os
+import requests
 import shutil
 import tarfile
 import tempfile
@@ -20,18 +21,28 @@ import urllib2
 
 """HATEOAS reference keys."""
 
+# SCO-API create experiment
+REF_EXPERIMENTS_CREATE = 'experiments.create'
 # SCO-API experiments listing
-HATEOAS_REF_EXPERIMENTS_LISTING = 'experiments.list'
+REF_EXPERIMENTS_LISTING = 'experiments.list'
+# SCO-API create image group
+REF_IMAGE_GROUPS_CREATE = 'images.upload'
 # SCO-API image groups listing
-HATEOAS_REF_IMAGE_GROUPS_LIST = 'images.groups.list'
+REF_IMAGE_GROUPS_LIST = 'images.groups.list'
+# SCO-API create subject
+REF_SUBJECTS_CREATE = 'subjects.upload'
 # SCO-API subjects listing
-HATEOAS_REF_SUBJECTS_LIST = 'subjects.list'
+REF_SUBJECTS_LIST = 'subjects.list'
 # Resource download
-HATEOAS_REF_DOWNLOAD = 'download'
+REF_DOWNLOAD = 'download'
 # Resource links listing
-HATEOAS_REF_LINKS = 'links'
+REF_LINKS = 'links'
 # Resource self reference
-HATEOAS_REF_SELF = 'self'
+REF_SELF = 'self'
+# Upsert options (currently for image groups only)
+REF_UPDATE_OPTIONS = 'options'
+# Upsert properties reference for resources
+REF_UPSERT_PROPERTIES = 'properties'
 
 """Query parameter for object listings."""
 
@@ -92,9 +103,9 @@ class ResourceHandle(object):
             dt.datetime.strptime(json_obj['timestamp'], '%Y-%m-%dT%H:%M:%S.%f')
         )
         # Get resource HATEOAS references
-        self.links = references_to_dict(json_obj[HATEOAS_REF_LINKS])
+        self.links = references_to_dict(json_obj[REF_LINKS])
         # Get self reference from list of resource links
-        self.url = self.links[HATEOAS_REF_SELF]
+        self.url = self.links[REF_SELF]
         # Set resource properties if present in the Json object. For handles
         # in object listings the property element will not be present. In that
         # case the local attribute is set to None.
@@ -134,13 +145,62 @@ class ExperimentHandle(ResourceHandle):
         self.subject = sco.subjects_get(
             references_to_dict(
                 json_obj['subject']['links']
-            )[HATEOAS_REF_SELF]
+            )[REF_SELF]
         )
         self.image_group = sco.image_groups_get(
             references_to_dict(
                 json_obj['images']['links']
-            )[HATEOAS_REF_SELF]
+            )[REF_SELF]
         )
+
+    @staticmethod
+    def create(url, name, subject_id, image_group_id, properties):
+        """Create a new experiment using the given SCO-API create experiment Url.
+
+        Parameters
+        ----------
+        url : string
+            Url to POST experiment create request
+        name : string
+            User-defined name for experiment
+        subject_id : string
+            Unique identifier for subject at given SCO-API
+        image_group_id : string
+            Unique identifier for image group at given SCO-API
+        properties : Dictionary
+            Set of additional properties for created experiment. Argument may be
+            None. Given name will override name property in this set (if present).
+
+        Returns
+        -------
+        string
+            Url of created experiment resource
+        """
+        # Create list of key,value-pairs representing experiment properties for
+        # request. The given name overrides the name in properties (if present).
+        obj_props = [{'key':'name','value':name}]
+        if not properties is None:
+            # Catch TypeErrors if properties is not a list.
+            try:
+                for key in properties:
+                    if key != 'name':
+                        obj_props.append({'key':key,'value':properties[key]})
+            except TypeError as ex:
+                raise ValueError('invalid property set')
+        # Create request body and send POST request to given Url
+        body = {
+            'subject' : subject_id,
+            'images' : image_group_id,
+            'properties' : obj_props
+        }
+        try:
+            req = urllib2.Request(url)
+            req.add_header('Content-Type', 'application/json')
+            response = urllib2.urlopen(req, json.dumps(body))
+        except urllib2.URLError as ex:
+            raise ValueError(str(ex))
+        # Get experiment self reference from successful response
+        return references_to_dict(json.load(response)['links'])[REF_SELF]
 
 class ImageGroupHandle(ResourceHandle):
     """Resource handle for SCO image group resource on local disk. The contents
@@ -176,7 +236,7 @@ class ImageGroupHandle(ResourceHandle):
         if not os.path.isdir(self.data_dir):
             os.mkdir(self.data_dir)
             # Download tar-archive
-            tmp_file = download_file(self.links[HATEOAS_REF_DOWNLOAD])
+            tmp_file = download_file(self.links[REF_DOWNLOAD])
             # Unpack downloaded file into data directory
             try:
                 tf = tarfile.open(name=tmp_file, mode='r')
@@ -196,7 +256,7 @@ class ImageGroupHandle(ResourceHandle):
             json_list = JsonResource(
                 references_to_dict(
                     json_obj['images']['links']
-                )[HATEOAS_REF_SELF] + '?' + QPARA_LIMIT + '=-1'
+                )[REF_SELF] + '?' + QPARA_LIMIT + '=-1'
             ).json
             with open(images_file, 'w') as f:
                 for element in json_list['items']:
@@ -211,6 +271,77 @@ class ImageGroupHandle(ResourceHandle):
                 for line in f:
                     self.images.append(os.path.join(self.data_dir, line.strip()))
 
+    @staticmethod
+    def create(url, filename, options, properties):
+        """Create new image group at given SCO-API by uploading local file.
+        Expects an tar-archive containing images in the image group. Allows to
+        update properties of created resource.
+
+        Parameters
+        ----------
+        url : string
+            Url to POST image group create request
+        filename : string
+            Path to tar-archive on local disk
+        options : Dictionary, optional
+            Values for image group options. Argument may be None.
+        properties : Dictionary
+            Set of additional properties for image group (may be None)
+
+        Returns
+        -------
+        string
+            Url of created image group resource
+        """
+        # Ensure that the file has valid suffix
+        if not has_tar_suffix(filename):
+            raise ValueError('invalid file suffix: ' + filename)
+        # Upload file to create image group. If response is not 201 the uploaded
+        # file is not a valid tar file
+        files = {'file': open(filename, 'rb')}
+        response = requests.post(url, files=files)
+        if response.status_code != 201:
+            raise ValueError('invalid file: ' + filename)
+        # Get image group HATEOAS references from successful response
+        links = references_to_dict(response.json()['links'])
+        resource_url = links[REF_SELF]
+        # Update image group options if given
+        if not options is None:
+            obj_ops = []
+            # Catch TypeErrors if properties is not a list.
+            try:
+                for opt in options:
+                    obj_ops.append({'name' : opt, 'value' : options[opt]})
+            except TypeError as ex:
+                raise ValueError('invalid option set')
+            try:
+                req = urllib2.Request(links[REF_UPDATE_OPTIONS])
+                req.add_header('Content-Type', 'application/json')
+                response = urllib2.urlopen(
+                    req,
+                    json.dumps({'options' : obj_ops})
+                )
+            except urllib2.URLError as ex:
+                raise ValueError(str(ex))
+        # Update image group properties if given
+        if not properties is None:
+            obj_props = []
+            # Catch TypeErrors if properties is not a list.
+            try:
+                for key in properties:
+                    obj_props.append({'key':key, 'value':properties[key]})
+            except TypeError as ex:
+                raise ValueError('invalid property set')
+            try:
+                req = urllib2.Request(links[REF_UPSERT_PROPERTIES])
+                req.add_header('Content-Type', 'application/json')
+                response = urllib2.urlopen(
+                    req,
+                    json.dumps({'properties' : obj_props})
+                )
+            except urllib2.URLError as ex:
+                raise ValueError(str(ex))
+        return resource_url
 
 class SubjectHandle(ResourceHandle):
     """Resource handle for SCO subject resource on local disk. Downloads the
@@ -241,7 +372,7 @@ class SubjectHandle(ResourceHandle):
             os.mkdir(self.data_dir)
             temp_dir = tempfile.mkdtemp()
             # Download tar-archive and unpack into temp_dir
-            tmp_file = download_file(self.links[HATEOAS_REF_DOWNLOAD])
+            tmp_file = download_file(self.links[REF_DOWNLOAD])
             try:
                 tf = tarfile.open(name=tmp_file, mode='r')
                 tf.extractall(path=temp_dir)
@@ -267,6 +398,59 @@ class SubjectHandle(ResourceHandle):
                     shutil.move(sub_folder, self.data_dir)
             # Remove temporary directory
             shutil.rmtree(temp_dir)
+
+
+    @staticmethod
+    def create(url, filename, properties):
+        """Create new subject at given SCO-API by uploading local file.
+        Expects an tar-archive containing FreeSurfer archive file. Allows to
+        update properties of created resource.
+
+        Parameters
+        ----------
+        url : string
+            Url to POST image group create request
+        filename : string
+            Path to tar-archive on local disk
+        properties : Dictionary
+            Set of additional properties for subject (may be None)
+
+        Returns
+        -------
+        string
+            Url of created subject resource
+        """
+        # Ensure that the file has valid suffix
+        if not has_tar_suffix(filename):
+            raise ValueError('invalid file suffix: ' + filename)
+        # Upload file to create subject. If response is not 201 the uploaded
+        # file is not a valid FreeSurfer archive
+        files = {'file': open(filename, 'rb')}
+        response = requests.post(url, files=files)
+        if response.status_code != 201:
+            raise ValueError('invalid file: ' + filename)
+        # Get image group HATEOAS references from successful response
+        links = references_to_dict(response.json()['links'])
+        resource_url = links[REF_SELF]
+        # Update subject properties if given
+        if not properties is None:
+            obj_props = []
+            # Catch TypeErrors if properties is not a list.
+            try:
+                for key in properties:
+                    obj_props.append({'key':key, 'value':properties[key]})
+            except TypeError as ex:
+                raise ValueError('invalid property set')
+            try:
+                req = urllib2.Request(links[REF_UPSERT_PROPERTIES])
+                req.add_header('Content-Type', 'application/json')
+                response = urllib2.urlopen(
+                    req,
+                    json.dumps({'properties' : obj_props})
+                )
+            except urllib2.URLError as ex:
+                raise ValueError(str(ex))
+        return resource_url
 
 
 # ------------------------------------------------------------------------------
@@ -418,6 +602,25 @@ def get_resource_listing(url, offset, limit, properties):
                     resource.properties[prop] = element[prop]
         resources.append(resource)
     return resources
+
+
+def has_tar_suffix(filename):
+    """Check if given filename suffix is a valid tar-file suffix.
+
+    Parameters
+    ----------
+    filename : string
+        Name of file on disk
+
+    Returns
+    -------
+    Boolean
+        True, if filename ends with '.tar', '.tar.gz', or '.tgz'
+    """
+    for suffix in ['.tar', '.tar.gz', '.tgz']:
+        if filename.endswith(suffix):
+            return True
+    return False
 
 
 def references_to_dict(elements):

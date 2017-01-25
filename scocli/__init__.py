@@ -4,6 +4,7 @@ Client to create, access and manipulate resources on Standard Cortical Observer
 Web Servers.
 """
 
+import atexit
 import json
 import os
 import shutil
@@ -79,7 +80,10 @@ class SCOClient(object):
                 os.makedirs(data_dir)
             self.directory = data_dir
         else:
+            # Use temporary directory as cache directory. Register cleanup
+            # handler to remove directory at exit
             self.directory = tempfile.mkdtemp()
+            atexit.register(shutil.rmtree, self.directory)
         # The cache index file is a tab delimited file with two columns:
         #
         # 1) resource url
@@ -147,9 +151,43 @@ class SCOClient(object):
         # and add the result to the local cache
         if not url in self.apis:
             self.apis[url] = sco.references_to_dict(
-                sco.JsonResource(url).json[sco.HATEOAS_REF_LINKS]
+                sco.JsonResource(url).json[sco.REF_LINKS]
             )
         return self.apis[url]
+
+    def experiments_create(self, name, subject_id, image_group_id, api_url=None, properties=None):
+        """Create a new experiment at the given SCO-API. Subject and image
+        group reference existing resources at the SCO-API.
+
+        Parameters
+        ----------
+        name : string
+            User-defined name for experiment
+        subject_id : string
+            Unique identifier for subject at given SCO-API
+        image_group_id : string
+            Unique identifier for image group at given SCO-API
+        api_url : string, optional
+            Base Url of SCO-API where experiment will be created
+        properties : Dictionary, optional
+            Set of additional properties for created experiment. The given
+            experiment name will override an existing name property in this set.
+
+        Returns
+        -------
+        scoserv.ExperimentHandle
+            Handle for local copy of created experiment resource
+        """
+        # Create experiment and return handle for created resource
+        return self.experiments_get(
+            sco.ExperimentHandle.create(
+                self.get_api_references(api_url)[sco.REF_EXPERIMENTS_CREATE],
+                name,
+                subject_id,
+                image_group_id,
+                properties=properties
+            )
+        )
 
     def experiments_get(self, resource_url):
         """Get handle for experiment resource at given Url.
@@ -198,7 +236,7 @@ class SCOClient(object):
         # Get subject listing Url for given SCO-API and return the retrieved
         # resource listing
         return sco.get_resource_listing(
-            self.get_api_references(api_url)[sco.HATEOAS_REF_EXPERIMENTS_LISTING],
+            self.get_api_references(api_url)[sco.REF_EXPERIMENTS_LISTING],
             offset,
             limit,
             properties
@@ -264,6 +302,37 @@ class SCOClient(object):
         # Return object directory, Json, active flag, and cache identifier
         return obj_dir, obj_json, is_active, cache_id
 
+    def image_groups_create(self, filename, api_url=None, options=None, properties=None):
+        """Create new image group at given SCO-API by uploading local file.
+        Expects an tar-archive containing images in the image group. Allows to
+        update properties of created resource.
+
+        Parameters
+        ----------
+        filename : string
+            Path to tar-archive on local disk
+        api_url : string, optional
+            Base Url of SCO-API where image group will be created
+        options : Dictionary, optional
+            Values for image group options
+        properties : Dictionary, optional
+            Set of additional properties for created image group
+
+        Returns
+        -------
+        scoserv.ImageGroupHandle
+            Handle for local copy of created image group resource
+        """
+        # Create image group and return handle for created resource
+        return self.image_groups_get(
+            sco.ImageGroupHandle.create(
+                self.get_api_references(api_url)[sco.REF_IMAGE_GROUPS_CREATE],
+                filename,
+                options,
+                properties
+            )
+        )
+
     def image_groups_get(self, resource_url):
         """Get handle for image group resource at given Url.
 
@@ -311,10 +380,37 @@ class SCOClient(object):
         # Get subject listing Url for given SCO-API and return the retrieved
         # resource listing
         return sco.get_resource_listing(
-            self.get_api_references(api_url)[sco.HATEOAS_REF_IMAGE_GROUPS_LIST],
+            self.get_api_references(api_url)[sco.REF_IMAGE_GROUPS_LIST],
             offset,
             limit,
             properties
+        )
+
+    def subjects_create(self, filename, api_url=None, properties=None):
+        """Create new anatomy subject at given SCO-API by uploading local file.
+        Expects an tar-archive containing a FreeSurfer anatomy.
+
+        Parameters
+        ----------
+        filename : string
+            Path to tar-archive on local disk
+        api_url : string, optional
+            Base Url of SCO-API where subject will be created
+        properties : Dictionary, optional
+            Set of additional properties for created subject
+
+        Returns
+        -------
+        scoserv.SubjectHandle
+            Handle for local copy of created image group resource
+        """
+        # Create image group and return handle for created resource
+        return self.subjects_get(
+            sco.SubjectHandle.create(
+                self.get_api_references(api_url)[sco.REF_SUBJECTS_CREATE],
+                filename,
+                properties
+            )
         )
 
     def subjects_get(self, resource_url):
@@ -364,7 +460,7 @@ class SCOClient(object):
         # Get subject listing Url for given SCO-API and return the retrieved
         # resource listing
         return sco.get_resource_listing(
-            self.get_api_references(api_url)[sco.HATEOAS_REF_SUBJECTS_LIST],
+            self.get_api_references(api_url)[sco.REF_SUBJECTS_LIST],
             offset,
             limit,
             properties

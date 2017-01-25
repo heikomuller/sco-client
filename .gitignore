@@ -1,2 +1,6 @@
 *.pyc
 scocli/venv/
+tests/data
+build/
+dist/
+sco_client.egg-info/
