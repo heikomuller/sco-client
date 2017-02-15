@@ -10,8 +10,6 @@ from neuropythy.freesurfer import add_subject_path
 from sco import calc_sco
 import scocli
 
-add_subject_path('/home/heiko/projects/sco/sco-server/resources/env/subjects')
-
 # Connect to default SCO-API. Uses a temporary directory to store files in
 # local cache
 sco = scocli.SCOClient()

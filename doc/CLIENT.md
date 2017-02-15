@@ -1,36 +1,31 @@
 # SCO Client API
 
-The client provides access to resources that are managed by SCO Web API's. The client keeps a local cache of resources for faster access. When a resource is first accessed locally it will be downloaded into the local cache. For chached resource we ensure that they are up-to-date whenever they are accessed.
+The SCO client provides access to resources that are managed by SCO Web API's. Each client instance can access resources from multiple API's, i.e., the client is not bound to a particular API instance.
 
-Resources are identfied by their URL.
+SCO clients keep a local cache of resources for faster access. When a resource is first accessed locally it will be downloaded and added to the local cache. The cached resource are ensured to be up-to-date whenever they are accessed.
 
-```
-# Create client. Data dir is optional. use ~/.sco if none given. This allows
-# to have multiple caches on a local machine
-sco = SCOClient()
+## Client API
 
-# Refresh option to enforce new download
-subject = sco.subjects_get(url, refresh=False)
-images = sco.images_get(url, refresh=False)
+The SCO Client has the following methods:
 
-opts = images.options
+### Cache
+def cache_clear(self):
 
-sco_calc(opts, subject=subject.data, stimulation_images=images.files)
+### Experiments
+experiments_create(self, name, subject_id, image_group_id, api_url=None, properties=None)
+experiments_get(self, resource_url):
+experiments_list(self, api_url=None, offset=0, limit=-1, properties=None):
 
-# Use existing experiments (primarily to run models on a remote server)
+experiments_runs_create(name, experiment_id, options=None, properties=None)
+experiments_runs_get
+experiments_runs_list
 
-experiment = sco.experiments_get(url)
-subject = experiment.subject
-images = experiment.images
+### Image Groups
+image_groups_create(self, filename, api_url=None, options=None, properties=None):
+image_groups_get(self, resource_url):
+image_groups_list(self, api_url=None, offset=0, limit=-1, properties=None):
 
-run = sco.run_experiment(experiment, arguments, name)
-sco.run_state(run)
-
-# Clear local cache
-sco.clear_cache()
-
-# Create new resources
-
-subject = sco.subjects_create(service_url, freesurfer_archive, name=name)
-images = sco.images_create(service_url, tar-file, options, name=name)
-experiment = sco.experiments_create(subject, images, arguments, name)
+### Subjects
+subjects_create(self, filename, api_url=None, properties=None):
+subjects_get(self, resource_url):
+subjects_list(self, api_url=None, offset=0, limit=-1, properties=None):

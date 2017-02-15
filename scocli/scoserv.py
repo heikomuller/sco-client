@@ -25,6 +25,10 @@ import urllib2
 REF_EXPERIMENTS_CREATE = 'experiments.create'
 # SCO-API experiments listing
 REF_EXPERIMENTS_LISTING = 'experiments.list'
+# SCO-API list experiments runs
+REF_EXPERIMENTS_RUNS_CREATE = 'predictions.run'
+# SCO-API list experiments runs
+REF_EXPERIMENTS_RUNS_LISTING = 'predictions.list'
 # SCO-API create image group
 REF_IMAGE_GROUPS_CREATE = 'images.upload'
 # SCO-API image groups listing
@@ -53,6 +57,18 @@ QPARA_LIMIT = 'limit'
 # Set offset in collection
 QPARA_OFFSET = 'offset'
 
+"""Model run timestamp keys"""
+
+RUN_CREATED_AT = 'createdAt'
+RUN_FINISHED_AT = 'finishedAt'
+RUN_STARTED_AT = 'startedAt'
+
+""" Run states """
+
+RUN_FAILED = 'FAILED'
+RUN_IDLE = 'IDLE'
+RUN_ACTIVE = 'RUNNING'
+RUN_SUCCESS = 'SUCCESS'
 
 # ------------------------------------------------------------------------------
 #
@@ -83,7 +99,7 @@ class ResourceHandle(object):
     links : Dictionary
         Dictionary of HATEOAS references associated with the resource
     """
-    def __init__(self, json_obj, properties=None):
+    def __init__(self, json_obj):
         """Initialize the resource handle using the Json object for the resource
         in the listing result returned by the Web API.
 
@@ -91,17 +107,12 @@ class ResourceHandle(object):
         ----------
         json_obj : Json object
             Json object for resources as returned by Web API
-        properties : List(string), optional
-            List of additional object properties to be included for items in
-            the result
         """
         # Get resource attributes from the Json object
         self.identifier = json_obj['id']
         self.name = json_obj['name']
         # Convert object's creation timestamp from UTC to local time
-        self.timestamp = to_local_time(
-            dt.datetime.strptime(json_obj['timestamp'], '%Y-%m-%dT%H:%M:%S.%f')
-        )
+        self.timestamp = to_local_time(json_obj['timestamp'])
         # Get resource HATEOAS references
         self.links = references_to_dict(json_obj[REF_LINKS])
         # Get self reference from list of resource links
@@ -125,10 +136,15 @@ class ExperimentHandle(ResourceHandle):
 
     Attributes
     ----------
-    subject : SubjectHandle
-        Handle to associated subject resource
-    image_group : ImageGroupHandle
-        Handle to associated image group resource.
+    fmri_url : string
+        Url for associated fMRI resource. None if no fMRI is associated with
+        this experiment
+    image_group_url : string
+        Url for associated image group resource.
+    runs_url : string
+        Url for associated model runs
+    subject_url : string
+        Url for associated subject resource
     """
     def __init__(self, json_obj, sco):
         """Initialize image group handle.
@@ -137,21 +153,27 @@ class ExperimentHandle(ResourceHandle):
         json_obj : Json-like object
             Json object containing resource description
         sco : SCOClient
-            Client to access associated subject and image group.
+            Client to access associated resources.
         """
         super(ExperimentHandle, self).__init__(json_obj)
-        # Get associated subject and image group using their respective self
-        # references in the Json object
-        self.subject = sco.subjects_get(
-            references_to_dict(
-                json_obj['subject']['links']
+        # Maintain reference to SCO client to access subject and image group
+        # resources when requested
+        self.sco = sco
+        # Maintain Urls for associated subject, image group, fMRI, and model
+        # run resources
+        self.subject_url = references_to_dict(
+            json_obj['subject']['links']
+        )[REF_SELF]
+        self.image_group_url = references_to_dict(
+            json_obj['images']['links']
+        )[REF_SELF]
+        if 'fmri' in json_obj:
+            self.fmri_url = references_to_dict(
+                json_obj['fmri']['links']
             )[REF_SELF]
-        )
-        self.image_group = sco.image_groups_get(
-            references_to_dict(
-                json_obj['images']['links']
-            )[REF_SELF]
-        )
+        else:
+            self.fmri_url = None
+        self.runs_url = self.links[REF_EXPERIMENTS_RUNS_LISTING]
 
     @staticmethod
     def create(url, name, subject_id, image_group_id, properties):
@@ -184,7 +206,7 @@ class ExperimentHandle(ResourceHandle):
             try:
                 for key in properties:
                     if key != 'name':
-                        obj_props.append({'key':key,'value':properties[key]})
+                        obj_props.append({'key':key, 'value':properties[key]})
             except TypeError as ex:
                 raise ValueError('invalid property set')
         # Create request body and send POST request to given Url
@@ -201,6 +223,77 @@ class ExperimentHandle(ResourceHandle):
             raise ValueError(str(ex))
         # Get experiment self reference from successful response
         return references_to_dict(json.load(response)['links'])[REF_SELF]
+
+    @property
+    def image_group(self):
+        """Image group resource that is associated with this experiment.
+
+        Returns
+        -------
+        ImageGroupHandle
+            Handle for associated image group resource
+        """
+        return self.sco.image_groups_get(self.image_group_url)
+
+    def run(self, name, arguments={}, properties=None):
+        """Create a new model run with given name, arguments, and properties.
+        Parameters
+        ----------
+        name : string
+            User-defined name for experiment
+        arguments : Dictionary
+            Dictionary of arguments for model run
+        properties : Dictionary, optional
+            Set of additional properties for created mode run.
+
+        Returns
+        -------
+        scoserv.ModelRunHandle
+            Handle for local copy of created model run resource
+        """
+        return self.sco.experiments_runs_create(
+            name,
+            self.links[REF_EXPERIMENTS_RUNS_CREATE],
+            arguments=arguments,
+            properties=properties
+        )
+
+    def runs(self, offset=0, limit=-1, properties=None):
+        """Get a list of run descriptors associated with this expriment.
+
+        Parameters
+        ----------
+        offset : int, optional
+            Starting offset for returned list items
+        limit : int, optional
+            Limit the number of items in the result
+        properties : List(string)
+            List of additional object properties to be included for items in
+            the result
+
+        Returns
+        -------
+        List(scoserv.ModelRunDescriptor)
+            List of model run descriptors
+        """
+        return get_run_listing(
+            self.runs_url,
+            offset=offset,
+            limit=limit,
+            properties=properties
+        )
+
+    @property
+    def subject(self):
+        """Subject resource that is associated with this experiment.
+
+        Returns
+        -------
+        SubjectHandle
+            Handle for associated subject resource
+        """
+        return self.sco.subjects_get(self.subject_url)
+
 
 class ImageGroupHandle(ResourceHandle):
     """Resource handle for SCO image group resource on local disk. The contents
@@ -236,7 +329,7 @@ class ImageGroupHandle(ResourceHandle):
         if not os.path.isdir(self.data_dir):
             os.mkdir(self.data_dir)
             # Download tar-archive
-            tmp_file = download_file(self.links[REF_DOWNLOAD])
+            tmp_file, f_suffix = download_file(self.links[REF_DOWNLOAD])
             # Unpack downloaded file into data directory
             try:
                 tf = tarfile.open(name=tmp_file, mode='r')
@@ -343,6 +436,183 @@ class ImageGroupHandle(ResourceHandle):
                 raise ValueError(str(ex))
         return resource_url
 
+
+class ModelRunDescriptor(ResourceHandle):
+    """Handle for model runs. Extends the default resource handle with
+    information about the run state.
+
+    Attributes
+    ----------
+    state : string
+        State of the model run ('FAILED', 'IDLE', 'RUNNING', 'SUCCESS')
+    """
+    def __init__(self, json_obj):
+        """Initialize the run descriptor using the Json object for the model
+        run in the listing result returned by the Web API.
+
+        Parameters
+        ----------
+        json_obj : Json object
+            Json object for model run as returned by Web API. Expected to
+            contain additional state field.
+        """
+        super(ModelRunDescriptor, self).__init__(json_obj)
+        # Set run state
+        self.state = json_obj['state']
+
+
+class ModelRunHandle(ModelRunDescriptor):
+    """Resource handle for SCO model run. Contains dictionary of timestamps
+    for run scheduling. For failed runs a list of error messages is maintained.
+    For completed runs a rference to the result file is maintainted.
+
+    Attributes
+    ----------
+    arguments : Dictionary()
+        Dictionary of arguments for the model run
+    experiment_url : string
+        Url for associated experiment
+    schedule : Dictionary(datetime)
+        Dictionary of timestamps for run events
+    errors : List(string), Optional
+        List of error messages (only for runs in FAILED state)
+    result_file : string
+        Path to result file (only for runs in SUCCESS state)
+    """
+    def __init__(self, json_obj, base_dir, sco):
+        """Initialize subject handle.
+        Parameters
+        ----------
+        json_obj : Json-like object
+            Json object containing resource description
+        base_dir : string
+            Path to cache base directory for object
+        sco : SCOClient
+            Client to access associated experiment.
+        """
+        super(ModelRunHandle, self).__init__(json_obj)
+        # Maintain reference to SCO client to access experiment
+        self.sco = sco
+        # Create list of arguments for model run
+        # Set image group options
+        self.arguments = {}
+        for kvp in json_obj['arguments']:
+            self.arguments[str(kvp['name'])] = kvp['value']
+        # Extract experiment Url
+        self.experiment_url = references_to_dict(
+            json_obj['experiment'][REF_LINKS]
+        )[REF_SELF]
+        # Create list of schedule timestamps
+        self.schedule = {}
+        for key in json_obj['schedule']:
+            self.schedule[key] = to_local_time(json_obj['schedule'][key])
+        # For failed runs create attribute errors containing list of errors
+        # messages
+        if self.state == RUN_FAILED:
+            self.errors = json_obj['errors']
+        elif self.state == RUN_SUCCESS:
+            # Name of the result data file
+            filename = None
+            # Create data directory if it doesnt exist
+            data_dir = os.path.abspath(os.path.join(base_dir, 'data'))
+            if not os.path.isdir(data_dir):
+                os.mkdir(data_dir)
+            else:
+                # If the directory exists check whether it contains the result
+                # data file. The file name is expected to start with the run
+                # identifier.
+                for f in os.listdir(data_dir):
+                    if f.startswith(self.identifier):
+                        filename = f
+                        break
+            # Download the result file if it has not been downloaded yet
+            if filename is None:
+                tmp_file, f_suffix = download_file(self.links[REF_DOWNLOAD])
+                filename = self.identifier + f_suffix
+                self.result_file = os.path.join(data_dir, filename)
+                shutil.move(tmp_file, self.result_file)
+            else:
+                self.result_file = os.path.join(data_dir, filename)
+
+    @staticmethod
+    def create(url, name, arguments, properties=None):
+        """Create a new model run using the given SCO-API create model run Url.
+
+        Parameters
+        ----------
+        url : string
+            Url to POST model run create model run request
+        name : string
+            User-defined name for model run
+        arguments : Dictionary
+            Dictionary of arguments for model run
+        properties : Dictionary, optional
+            Set of additional properties for created mode run.
+
+        Returns
+        -------
+        string
+            Url of created model run resource
+        """
+        # Create list of model run arguments. Catch TypeErrors if arguments is
+        # not a list.
+        obj_args = []
+        try:
+            for arg in arguments:
+                obj_args.append({'name' : arg, 'value' : arguments[arg]})
+        except TypeError as ex:
+            raise ValueError('invalid argument set')
+        # Create request body and send POST request to given Url
+        body = {
+            'name' : name,
+            'arguments' : obj_args,
+        }
+        # Create list of properties if given.  Catch TypeErrors if properties is
+        # not a list.
+        if not properties is None:
+            obj_props = []
+            try:
+                for key in properties:
+                    if key != 'name':
+                        obj_props.append({'key':key, 'value':properties[key]})
+            except TypeError as ex:
+                raise ValueError('invalid property set')
+            body['properties'] =  obj_props
+        # POST create model run request
+        try:
+            req = urllib2.Request(url)
+            req.add_header('Content-Type', 'application/json')
+            response = urllib2.urlopen(req, json.dumps(body))
+        except urllib2.URLError as ex:
+            raise ValueError(str(ex))
+        # Get model run self reference from successful response
+        return references_to_dict(json.load(response)['links'])[REF_SELF]
+
+    @property
+    def experiment(self):
+        """Experiment resource for which this is a model run.
+
+        Returns
+        -------
+        ExperimentHandle
+            Handle for associated experiment resource
+        """
+        return self.sco.experiments_get(self.experiment_url)
+
+    def refresh(self):
+        """Get a refreshed version of the resource handle. Primarily necessary
+        to minitor changes to the run state.
+
+        Note that this handle is not refreshed but a fresh handle is returned!
+
+        Returns
+        -------
+        ModelRunHandle
+            Refreshed run handle.
+        """
+        return self.sco.experiments_runs_get(self.url)
+
+
 class SubjectHandle(ResourceHandle):
     """Resource handle for SCO subject resource on local disk. Downloads the
     subject tar-file (on first access) and copies the contained FreeSurfer
@@ -372,7 +642,7 @@ class SubjectHandle(ResourceHandle):
             os.mkdir(self.data_dir)
             temp_dir = tempfile.mkdtemp()
             # Download tar-archive and unpack into temp_dir
-            tmp_file = download_file(self.links[REF_DOWNLOAD])
+            tmp_file, f_suffix = download_file(self.links[REF_DOWNLOAD])
             try:
                 tf = tarfile.open(name=tmp_file, mode='r')
                 tf.extractall(path=temp_dir)
@@ -504,21 +774,22 @@ def download_file(url):
 
     Returns
     -------
-    string
-        Path to downloaded file
+    string, string
+        Path to downloaded file and file suffix
     """
     r = urllib2.urlopen(url)
     # Expects a tar-archive or a compressed tar-archive
     if r.info()['content-type'] == 'application/x-tar':
-        fd, f_path = tempfile.mkstemp(suffix='.tar')
+        suffix = '.tar'
     elif r.info()['content-type'] == 'application/gzip':
-        fd, f_path = tempfile.mkstemp(suffix='.tar.gz')
+        suffix = '.tar.gz'
     else:
         raise ValueError('unexpected file type: ' + r.info()['content-type'])
     # Save attached file in temp file and return path to temp file
+    fd, f_path = tempfile.mkstemp(suffix=suffix)
     os.write(fd, r.read())
     os.close(fd)
-    return f_path
+    return f_path, suffix
 
 
 def get_freesurfer_dir(directory):
@@ -556,7 +827,7 @@ def get_freesurfer_dir(directory):
 
 
 def get_resource_listing(url, offset, limit, properties):
-    """Gneric method to retrieve a trsource listing from a SCO-API. Takes the
+    """Gneric method to retrieve a resource listing from a SCO-API. Takes the
     resource-specific API listing Url as argument.
 
     Parameters
@@ -604,6 +875,58 @@ def get_resource_listing(url, offset, limit, properties):
     return resources
 
 
+def get_run_listing(listing_url, offset, limit, properties):
+    """Get list of experiment resources from a SCO-API.
+
+    Parameters
+    ----------
+    listing_url : string
+        url for experiments run listing.
+    offset : int
+        Starting offset for returned list items
+    limit : int
+        Limit the number of items in the result
+    properties : List(string)
+        List of additional object properties to be included for items in
+        the result
+
+    Returns
+    -------
+    List(scoserv.ModelRunDescriptor)
+        List of model run descriptors
+    """
+    # Create listing query based on given arguments
+    query = [
+        QPARA_OFFSET + '=' + str(offset),
+        QPARA_LIMIT + '=' + str(limit)
+    ]
+    # Ensure that the run state is included in the listing as attribute
+    props = ['state']
+    # Add properties argument if property list is not None and not empty
+    if not properties is None:
+        for prop in properties:
+            if not prop in props:
+                props.append(prop)
+    query.append(QPARA_ATTRIBUTES + '=' + ','.join(props))
+    # Add query to Url.
+    url = listing_url + '?' + '&'.join(query)
+    # Get subject listing Url for given SCO-API and decorate it with
+    # given listing arguments. Then retrieve listing from SCO-API.
+    json_obj = JsonResource(url).json
+    # Convert result into a list of resource handles and return the result
+    resources = []
+    for element in json_obj['items']:
+        resource = ModelRunDescriptor(element)
+        # Add additional properties to resource if list is given
+        if not properties is None:
+            resource.properties = {}
+            for prop in properties:
+                if prop in element:
+                    resource.properties[prop] = element[prop]
+        resources.append(resource)
+    return resources
+
+
 def has_tar_suffix(filename):
     """Check if given filename suffix is a valid tar-file suffix.
 
@@ -640,7 +963,7 @@ def references_to_dict(elements):
     return dictionary
 
 
-def to_local_time(utc):
+def to_local_time(timestamp):
     """Convert a datatime object from UTC time to local time.
 
     Adopted from:
@@ -648,14 +971,16 @@ def to_local_time(utc):
 
     Parameters
     ----------
-    utc : datetime
-        Datetime object expected to be in UTC time zone
+    timestamp : string
+        Default string representation of timestamps expected to be in
+        UTC time zone
 
     Returns
     -------
     datetime
         Datetime object in local time zone
     """
+    utc = dt.datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S.%f')
     # Get UTC and local time zone
     from_zone = tz.gettz('UTC')
     to_zone = tz.tzlocal()

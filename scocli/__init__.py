@@ -12,7 +12,7 @@ import tempfile
 import uuid
 
 import scoserv as sco
-from scoserv import ExperimentHandle, ImageGroupHandle, SubjectHandle
+from scoserv import ExperimentHandle, ImageGroupHandle, ModelRunHandle, SubjectHandle
 
 
 # ------------------------------------------------------------------------------
@@ -242,6 +242,86 @@ class SCOClient(object):
             properties
         )
 
+    def experiments_runs_create(self, name, api_url, arguments={}, properties=None):
+        """Create a new model run at the given SCO-API.
+
+        Parameters
+        ----------
+        name : string
+            User-defined name for experiment
+        api_url : string
+            Url to POST create model run request
+        arguments : Dictionary
+            Dictionary of arguments for model run
+        properties : Dictionary, optional
+            Set of additional properties for created mode run.
+
+        Returns
+        -------
+        scoserv.ModelRunHandle
+            Handle for local copy of created model run resource
+        """
+        # Create experiment and return handle for created resource
+        return self.experiments_runs_get(
+            sco.ModelRunHandle.create(
+                api_url,
+                name,
+                arguments,
+                properties=properties
+            )
+        )
+
+    def experiments_runs_get(self, resource_url):
+        """Get handle for model run resource at given Url.
+
+        Parameters
+        ----------
+        resource_url : string
+            Url for model run resource at SCO-API
+
+        Returns
+        -------
+        scoserv.ModelRunHandle
+            Handle for local copy of experiment resource
+        """
+        # Get resource directory, Json representation, active flag, and cache id
+        obj_dir, obj_json, is_active, cache_id = self.get_object(resource_url)
+        # Create image group handle. Will raise an exception if resource is not
+        # in cache and cannot be downloaded.
+        run = ModelRunHandle(obj_json, obj_dir, self)
+        # Add resource to cache if not exists
+        if not cache_id in self.cache:
+            self.cache_add(resource_url, cache_id)
+        # Return subject handle
+        return run
+
+    def experiments_runs_list(self, listing_url, offset=0, limit=-1, properties=None):
+        """Get list of experiment resources from a SCO-API.
+
+        Parameters
+        ----------
+        listing_url : string
+            url for experiments run listing.
+        offset : int, optional
+            Starting offset for returned list items
+        limit : int, optional
+            Limit the number of items in the result
+        properties : List(string)
+            List of additional object properties to be included for items in
+            the result
+
+        Returns
+        -------
+        List(scoserv.ModelRunDescriptor)
+            List of model run descriptors
+        """
+        return sco.get_run_listing(
+            listing_url,
+            offset=offset,
+            limit=limit,
+            properties=properties
+        )
+
     def get_object(self, resource_url):
         """Get remote resource information. Creates a local directory for the
         resource if this is the first access to the resource. Downloads the
@@ -465,9 +545,3 @@ class SCOClient(object):
             limit,
             properties
         )
-
-
-
-# ------------------------------------------------------------------------------
-#
-# ------------------------------------------------------------------------------
