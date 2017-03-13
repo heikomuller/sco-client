@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.abspath('..'))
 
 import scocli
 
-API_URL = 'http://localhost:5050/sco-server/api/v1'
+API_URL = 'http://localhost:5000/sco-server/api/v1'
 DATA_DIR = './data'
 
 class TestSCOClient(unittest.TestCase):

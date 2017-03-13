@@ -12,7 +12,7 @@ setup(
     url='https://github.com/heikomuller/sco-client',
     license='GPLv3',
     packages=['scocli'],
-    package_data={'': ['LICENSE.txt']},
+    package_data={'': ['LICENSE']},
     install_requires=['python-dateutil',
                       'requests']
 )

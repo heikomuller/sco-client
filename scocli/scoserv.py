@@ -45,6 +45,8 @@ REF_LINKS = 'links'
 REF_SELF = 'self'
 # Upsert options (currently for image groups only)
 REF_UPDATE_OPTIONS = 'options'
+# Update model run state
+REF_UPDATE_STATE = 'state'
 # Upsert properties reference for resources
 REF_UPSERT_PROPERTIES = 'properties'
 
@@ -611,6 +613,97 @@ class ModelRunHandle(ModelRunDescriptor):
             Refreshed run handle.
         """
         return self.sco.experiments_runs_get(self.url)
+
+    @staticmethod
+    def update_state(url, state_obj):
+        """Update the state of a given model run. The state object is a Json
+        representation of the state as created by the SCO-Server.
+
+        Throws a ValueError if the resource is unknown or the update state
+        request failed.
+
+        Parameters
+        ----------
+        url : string
+            Url to POST model run create model run request
+        state_obj : Json object
+            State object serialization as expected by the API.
+        """
+        # POST update run state request
+        try:
+            req = urllib2.Request(url)
+            req.add_header('Content-Type', 'application/json')
+            response = urllib2.urlopen(req, json.dumps(state_obj))
+        except urllib2.URLError as ex:
+            raise ValueError(str(ex))
+        # Throw exception if resource was unknown or update request failed
+        if response.code == 400:
+            raise ValueError(response.message)
+        elif response.code == 404:
+            raise ValueError('unknown model run')
+
+    def update_state_active(self):
+        """Update the state of the model run to active.
+
+        Raises an exception if update fails or resource is unknown.
+
+        Returns
+        -------
+        ModelRunHandle
+            Refreshed run handle.
+        """
+        # Update state to active
+        self.update_state(self.links[REF_UPDATE_STATE], {'type' : RUN_ACTIVE})
+        # Returned refreshed verion of the handle
+        return self.refresh()
+
+    def update_state_error(self, errors):
+        """Update the state of the model run to 'FAILED'. Expects a list of
+        error messages.
+
+        Raises an exception if update fails or resource is unknown.
+
+        Parameters
+        ----------
+        errors : List(string)
+            List of error messages
+
+        Returns
+        -------
+        ModelRunHandle
+            Refreshed run handle.
+        """
+        # Update state to active
+        self.update_state(
+            self.links[REF_UPDATE_STATE],
+            {'type' : RUN_FAILED, 'errors' : errors}
+        )
+        # Returned refreshed verion of the handle
+        return self.refresh()
+
+    def update_state_success(self, model_output):
+        """Update the state of the model run to 'SUCCESS'. Expects a model
+        result identifier.
+
+        Raises an exception if update fails or resource is unknown.
+
+        Parameters
+        ----------
+        model_output : string
+            Identifier of fMRI data object
+
+        Returns
+        -------
+        ModelRunHandle
+            Refreshed run handle.
+        """
+        # Update state to active
+        self.update_state(
+            self.links[REF_UPDATE_STATE],
+            {'type' : RUN_SUCCESS, 'modelOutput' : model_output}
+        )
+        # Returned refreshed verion of the handle
+        return self.refresh()
 
 
 class SubjectHandle(ResourceHandle):

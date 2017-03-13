@@ -22,7 +22,7 @@ from scoserv import ExperimentHandle, ImageGroupHandle, ModelRunHandle, SubjectH
 # ------------------------------------------------------------------------------
 
 # Url of default SCO Web API hosted at NYU
-DEFAULT_API = 'http://cds-swg1.cims.nyu.edu:5050/sco-server/api/v1'
+DEFAULT_API = 'http://cds-swg1.cims.nyu.edu:5000/sco-server/api/v1'
 
 
 # ------------------------------------------------------------------------------
@@ -155,6 +155,10 @@ class SCOClient(object):
             )
         return self.apis[url]
 
+    # --------------------------------------------------------------------------
+    # Experiments
+    # --------------------------------------------------------------------------
+
     def experiments_create(self, name, subject_id, image_group_id, api_url=None, properties=None):
         """Create a new experiment at the given SCO-API. Subject and image
         group reference existing resources at the SCO-API.
@@ -204,13 +208,13 @@ class SCOClient(object):
         """
         # Get resource directory, Json representation, active flag, and cache id
         obj_dir, obj_json, is_active, cache_id = self.get_object(resource_url)
-        # Create image group handle. Will raise an exception if resource is not
+        # Create experiment handle. Will raise an exception if resource is not
         # in cache and cannot be downloaded.
         experiment = ExperimentHandle(obj_json, self)
         # Add resource to cache if not exists
         if not cache_id in self.cache:
             self.cache_add(resource_url, cache_id)
-        # Return subject handle
+        # Return experiment handle
         return experiment
 
     def experiments_list(self, api_url=None, offset=0, limit=-1, properties=None):
@@ -241,6 +245,10 @@ class SCOClient(object):
             limit,
             properties
         )
+
+    # --------------------------------------------------------------------------
+    # Model Runs
+    # --------------------------------------------------------------------------
 
     def experiments_runs_create(self, name, api_url, arguments={}, properties=None):
         """Create a new model run at the given SCO-API.
@@ -282,17 +290,17 @@ class SCOClient(object):
         Returns
         -------
         scoserv.ModelRunHandle
-            Handle for local copy of experiment resource
+            Handle for local copy of model run resource
         """
         # Get resource directory, Json representation, active flag, and cache id
         obj_dir, obj_json, is_active, cache_id = self.get_object(resource_url)
-        # Create image group handle. Will raise an exception if resource is not
+        # Create model run handle. Will raise an exception if resource is not
         # in cache and cannot be downloaded.
         run = ModelRunHandle(obj_json, obj_dir, self)
         # Add resource to cache if not exists
         if not cache_id in self.cache:
             self.cache_add(resource_url, cache_id)
-        # Return subject handle
+        # Return model run handle
         return run
 
     def experiments_runs_list(self, listing_url, offset=0, limit=-1, properties=None):
@@ -321,6 +329,27 @@ class SCOClient(object):
             limit=limit,
             properties=properties
         )
+
+    def experiments_runs_update_state_active(self, resource_url):
+        """Update state of model run resource at given Url to 'ACTIVE'.
+
+        Parameters
+        ----------
+        resource_url : string
+            Url for model run resource at SCO-API
+
+        Returns
+        -------
+        scoserv.ModelRunHandle
+            Handle for local copy of model run resource
+        """
+        # Send state update request.
+        return self.experiments_runs_get(resource_url).update_state_active()
+
+
+    # --------------------------------------------------------------------------
+    # General
+    # --------------------------------------------------------------------------
 
     def get_object(self, resource_url):
         """Get remote resource information. Creates a local directory for the
@@ -382,6 +411,10 @@ class SCOClient(object):
         # Return object directory, Json, active flag, and cache identifier
         return obj_dir, obj_json, is_active, cache_id
 
+    # --------------------------------------------------------------------------
+    # Image Groups
+    # --------------------------------------------------------------------------
+
     def image_groups_create(self, filename, api_url=None, options=None, properties=None):
         """Create new image group at given SCO-API by uploading local file.
         Expects an tar-archive containing images in the image group. Allows to
@@ -434,7 +467,7 @@ class SCOClient(object):
         # Add resource to cache if not exists
         if not cache_id in self.cache:
             self.cache_add(resource_url, cache_id)
-        # Return subject handle
+        # Return image group handle
         return image_group
 
     def image_groups_list(self, api_url=None, offset=0, limit=-1, properties=None):
@@ -465,6 +498,10 @@ class SCOClient(object):
             limit,
             properties
         )
+
+    # --------------------------------------------------------------------------
+    # Subjects
+    # --------------------------------------------------------------------------
 
     def subjects_create(self, filename, api_url=None, properties=None):
         """Create new anatomy subject at given SCO-API by uploading local file.
