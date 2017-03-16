@@ -1,9 +1,7 @@
 """Create model run for a given experiment. Monitor run state until finished."""
 
 import os
-import sys
 import time
-sys.path.insert(0, os.path.abspath('..'))
 
 import scocli
 import scocli.scoserv as scoserv

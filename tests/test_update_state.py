@@ -3,17 +3,16 @@ import sys
 import unittest
 import urllib2
 
-sys.path.insert(0, os.path.abspath('..'))
-
 import scocli
 
 API_URL = 'http://localhost:5000/sco-server/api/v1'
-DATA_DIR = './data'
+DATA_DIR = os.path.abspath('./data')
 
 class TestSCOClient(unittest.TestCase):
 
     def setUp(self):
         """Initialize the SCO Client. Assumes that defautl Web API is active."""
+        self.RESULT_FILE = os.path.join(DATA_DIR, 'result.tar.gz')
         self.sco = scocli.SCOClient(api_url=API_URL)
 
     def test_create_error_run(self):
@@ -29,11 +28,11 @@ class TestSCOClient(unittest.TestCase):
             properties={'comment':'Experiment created automatically to test model run update state'}
         )
         run = experiment.run('Test Run', arguments={'max_eccentricity':11})
-        self.assertEqual(run.state, 'IDLE')
+        self.assertTrue(run.state.is_idle)
         run = run.update_state_active()
-        self.assertEqual(run.state, 'RUNNING')
+        self.assertTrue(run.state.is_running)
         run = run.update_state_error(['Something went wrong'])
-        self.assertEqual(run.state, 'FAILED')
+        self.assertTrue(run.state.is_failed)
         # Ensure that we cannot modify state anymore
         with self.assertRaises(ValueError):
             run = run.update_state_active()
@@ -51,13 +50,15 @@ class TestSCOClient(unittest.TestCase):
             properties={'comment':'Experiment created automatically to test model run update state'}
         )
         run = experiment.run('Test Run', arguments={'max_eccentricity':11})
-        self.assertEqual(run.state, 'IDLE')
+        self.assertTrue(run.state.is_idle)
         run = run.update_state_active()
-        self.assertEqual(run.state, 'RUNNING')
-         # Update state to SUCCESS with some fake resut;. Will throw HTTP error
-         # when trying to access the result object.
-        with self.assertRaises(urllib2.HTTPError):
-            run.update_state_success('SOMEFAKEID')
+        self.assertTrue(run.state.is_running)
+        # Update state to SUCCESS with some fake resut.
+        run = run.update_state_success(self.RESULT_FILE)
+        self.assertTrue(run.state.is_success)
+        # Updating again should raise ValueError
+        with self.assertRaises(ValueError):
+            run.update_state_success(self.RESULT_FILE)
 
 
 if __name__ == '__main__':

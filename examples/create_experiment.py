@@ -1,8 +1,6 @@
 """Create experiments for existing subjects and image groups on SCO-API."""
 
 import os
-import sys
-sys.path.insert(0, os.path.abspath('..'))
 
 import scocli
 

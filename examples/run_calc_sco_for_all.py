@@ -3,8 +3,6 @@ all combinations of subjects and image groups from a SCO-API.
 """
 
 import os
-import sys
-sys.path.insert(0, os.path.abspath('..'))
 
 from neuropythy.freesurfer import add_subject_path
 from sco import calc_sco
@@ -32,7 +30,7 @@ for s in sco.subjects_list(properties=['filename']):
         try:
             results = calc_sco(
                 opts,
-                subject=subject.data_dir,
+                subject=subject.data_directory,
                 stimulus_image_filenames=image_group.images
             )
         except Exception as ex:

@@ -4,8 +4,6 @@ the SCO predictive model.
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath('..'))
-
 from neuropythy.freesurfer import add_subject_path
 from sco import calc_sco
 import scocli
@@ -36,11 +34,12 @@ print 'RUN MODEL WITH:'
 print '\tSUBJECT: ' + subject.name
 print '\tIMAGES : ' + image_group.name
 print '\tOPTIONS: ' + str(opts)
+image_files = [img.filename for img in image_group.images]
 try:
     results = calc_sco(
         opts,
-        subject=subject.data_dir,
-        stimulus_image_filenames=image_group.images
+        subject=subject.data_directory,
+        stimulus_image_filenames=image_files
     )
 except Exception as ex:
     print '\n!EXCEPTION: ' + str(ex) + '\n'

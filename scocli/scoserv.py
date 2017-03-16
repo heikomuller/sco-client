@@ -46,7 +46,9 @@ REF_SELF = 'self'
 # Upsert options (currently for image groups only)
 REF_UPDATE_OPTIONS = 'options'
 # Update model run state
-REF_UPDATE_STATE = 'state'
+REF_UPDATE_STATE_ACTIVE = 'state.active'
+REF_UPDATE_STATE_ERROR = 'state.error'
+REF_UPDATE_STATE_SUCCESS = 'state.success'
 # Upsert properties reference for resources
 REF_UPSERT_PROPERTIES = 'properties'
 
@@ -77,6 +79,33 @@ RUN_SUCCESS = 'SUCCESS'
 # SCO Web API Resources
 #
 # ------------------------------------------------------------------------------
+
+class Attribute(object):
+    """Attributes are name value pairs. Attributes are used to represent image
+    group options and model run arguments.
+
+    Attributes
+    ----------
+    name : string
+        Property name
+    value : any
+        Associated value for the property. Can be of any type
+    """
+    def __init__(self, name, value):
+        """Initialize the type property instance by passing arguments for name
+        and value.
+
+        Parameters
+        ----------
+        name : string
+            Property name
+
+        value : any
+            Associated value for the property. Can be of any type
+        """
+        self.name = name
+        self.value = value
+
 
 class ResourceHandle(object):
     """Generic handle for a Web API resource in resource listing. Contains the
@@ -129,6 +158,10 @@ class ResourceHandle(object):
         else:
             self.properties = None
 
+
+# ------------------------------------------------------------------------------
+# Experiments
+# ------------------------------------------------------------------------------
 
 class ExperimentHandle(ResourceHandle):
     """Resource handle for SCO experiment resource. Experiments are not directly
@@ -297,6 +330,43 @@ class ExperimentHandle(ResourceHandle):
         return self.sco.subjects_get(self.subject_url)
 
 
+# ------------------------------------------------------------------------------
+# Image Groups
+# ------------------------------------------------------------------------------
+
+class GroupImage(object):
+    """Required for compatibility with the data store image group object.
+    Represents an image in a image group.
+
+    Attributes
+    ----------
+    identifier : string
+        Unique identifier of the image
+    folder : string
+        (Sub-)folder in the grouop (default: /)
+    name : string
+        Image name (unique within the folder)
+    """
+    def __init__(self, identifier, folder, name, filename):
+        """Initialize attributes of the group image.
+
+        Parameters
+        ----------
+        identifier : string
+            Unique identifier of the image
+        folder : string
+            (Sub-)folder in the group (default: /)
+        name : string
+            Image name (unique within the folder)
+        filename : string
+            Absolute path to file on local disk
+        """
+        self.identifier = identifier
+        self.folder = folder
+        self.name = name
+        self.filename = filename
+
+
 class ImageGroupHandle(ResourceHandle):
     """Resource handle for SCO image group resource on local disk. The contents
     of the image group tar-file are extracted into the objects data directory.
@@ -308,7 +378,7 @@ class ImageGroupHandle(ResourceHandle):
         data files
     images : List(string)
         List if absolute file path to images in the group.
-    options : Dictionary
+    options : Dictionary(Attribute)
         Dictionary of options for image group
     """
     def __init__(self, json_obj, base_dir):
@@ -324,21 +394,22 @@ class ImageGroupHandle(ResourceHandle):
         # Set image group options
         self.options = {}
         for kvp in json_obj['options']:
-            self.options[str(kvp['name'])] = kvp['value']
+            a_name = str(kvp['name'])
+            self.options[a_name] = Attribute(a_name, kvp['value'])
         # Set the data directory. If directory does not exist, create it,
         # download the resource data archive, and unpack into data directory
-        self.data_dir = os.path.abspath(os.path.join(base_dir, 'data'))
-        if not os.path.isdir(self.data_dir):
-            os.mkdir(self.data_dir)
+        self.data_directory = os.path.abspath(os.path.join(base_dir, 'data'))
+        if not os.path.isdir(self.data_directory):
+            os.mkdir(self.data_directory)
             # Download tar-archive
             tmp_file, f_suffix = download_file(self.links[REF_DOWNLOAD])
             # Unpack downloaded file into data directory
             try:
                 tf = tarfile.open(name=tmp_file, mode='r')
-                tf.extractall(path=self.data_dir)
+                tf.extractall(path=self.data_directory)
             except (tarfile.ReadError, IOError) as err:
                 # Clean up in case there is an error during extraction
-                shutil.rmtree(self.data_dir)
+                shutil.rmtree(self.data_directory)
                 raise ValueError(str(err))
             # Remove downloaded file
             os.remove(tmp_file)
@@ -357,14 +428,35 @@ class ImageGroupHandle(ResourceHandle):
                 for element in json_list['items']:
                     # Folder names start with '/'. Remove to get abs local path
                     local_path = element['folder'][1:] + element['name']
-                    img_file = os.path.join(self.data_dir, local_path)
-                    f.write(local_path + '\n')
-                    self.images.append(img_file)
+                    img_file = os.path.join(self.data_directory, local_path)
+                    record = '\t'.join([
+                        element['id'],
+                        element['folder'],
+                        element['name'],
+                        local_path
+                    ])
+                    f.write(record + '\n')
+                    self.images.append(
+                        GroupImage(
+                            element['id'],
+                            element['folder'],
+                            element['name'],
+                            img_file
+                        )
+                    )
         else:
             # Read content of images file into images list
             with open(images_file, 'r') as f:
                 for line in f:
-                    self.images.append(os.path.join(self.data_dir, line.strip()))
+                    tokens = line.strip().split('\t')
+                    self.images.append(
+                        GroupImage(
+                            tokens[0],
+                            tokens[1],
+                            tokens[2],
+                            os.path.join(self.data_directory, tokens[3])
+                        )
+                    )
 
     @staticmethod
     def create(url, filename, options, properties):
@@ -439,6 +531,91 @@ class ImageGroupHandle(ResourceHandle):
         return resource_url
 
 
+# ------------------------------------------------------------------------------
+# Model Runs
+# ------------------------------------------------------------------------------
+
+class ModelRunState(object):
+    """Object representing the state of a predictive model run. Contains the
+    state name (i.e., textual identifier). Provides flags for individual states
+    to simplify test for specific run states.
+
+    Attributes
+    ----------
+    is_active : Boolean
+        True, if run state is 'RUNNING'
+    is_failed : Boolean
+        True, if run state is 'FAILED'
+    is_idle : Boolean
+        True, if run state is is_idle
+    is_success : Boolean
+        True, if run state is success
+    name : string
+        Run state name
+    """
+    def __init__(self, state):
+        """Initialize the run state with the state identifier.
+
+        Parameters
+        ----------
+        state : string
+            Run state identifier
+        """
+        # Ensure that state is valid
+        if not state in [RUN_ACTIVE, RUN_FAILED, RUN_IDLE, RUN_SUCCESS]:
+            raise ValueError('invalid state identifier: ' + str(state))
+        # Set state name
+        self.name = state
+
+    def __repr__(self):
+        """String representation of the run state object."""
+        return self.name
+
+    @property
+    def is_failed(self):
+        """Flag indicating if the model run has exited in a failed state.
+
+        Returns
+        -------
+        Boolean
+            True, if model run is in falied state.
+        """
+        return self.name == RUN_FAILED
+
+    @property
+    def is_idle(self):
+        """Flag indicating if the model run is waiting to start execution.
+
+        Returns
+        -------
+        Boolean
+            True, if model run is in idle state.
+        """
+        return self.name == RUN_IDLE
+
+    @property
+    def is_running(self):
+        """Flag indicating if the model run is in a running state.
+
+        Returns
+        -------
+        Boolean
+            True, if model run is in running state.
+        """
+        return self.name == RUN_ACTIVE
+
+    @property
+    def is_success(self):
+        """Flag indicating if the model run has finished with success.
+
+        Returns
+        -------
+        Boolean
+            True, if model run is in success state.
+        """
+        return self.name == RUN_SUCCESS
+
+
 class ModelRunDescriptor(ResourceHandle):
     """Handle for model runs. Extends the default resource handle with
     information about the run state.
@@ -460,7 +637,7 @@ class ModelRunDescriptor(ResourceHandle):
         """
         super(ModelRunDescriptor, self).__init__(json_obj)
         # Set run state
-        self.state = json_obj['state']
+        self.state = ModelRunState(json_obj['state'])
 
 
 class ModelRunHandle(ModelRunDescriptor):
@@ -470,7 +647,7 @@ class ModelRunHandle(ModelRunDescriptor):
 
     Attributes
     ----------
-    arguments : Dictionary()
+    arguments : Dictionary(Attribute)
         Dictionary of arguments for the model run
     experiment_url : string
         Url for associated experiment
@@ -499,7 +676,8 @@ class ModelRunHandle(ModelRunDescriptor):
         # Set image group options
         self.arguments = {}
         for kvp in json_obj['arguments']:
-            self.arguments[str(kvp['name'])] = kvp['value']
+            a_name = str(kvp['name'])
+            self.arguments[a_name] = Attribute(a_name, kvp['value'])
         # Extract experiment Url
         self.experiment_url = references_to_dict(
             json_obj['experiment'][REF_LINKS]
@@ -510,9 +688,9 @@ class ModelRunHandle(ModelRunDescriptor):
             self.schedule[key] = to_local_time(json_obj['schedule'][key])
         # For failed runs create attribute errors containing list of errors
         # messages
-        if self.state == RUN_FAILED:
+        if self.state.is_failed:
             self.errors = json_obj['errors']
-        elif self.state == RUN_SUCCESS:
+        elif self.state.is_success:
             # Name of the result data file
             filename = None
             # Create data directory if it doesnt exist
@@ -653,7 +831,7 @@ class ModelRunHandle(ModelRunDescriptor):
             Refreshed run handle.
         """
         # Update state to active
-        self.update_state(self.links[REF_UPDATE_STATE], {'type' : RUN_ACTIVE})
+        self.update_state(self.links[REF_UPDATE_STATE_ACTIVE], {'type' : RUN_ACTIVE})
         # Returned refreshed verion of the handle
         return self.refresh()
 
@@ -675,7 +853,7 @@ class ModelRunHandle(ModelRunDescriptor):
         """
         # Update state to active
         self.update_state(
-            self.links[REF_UPDATE_STATE],
+            self.links[REF_UPDATE_STATE_ERROR],
             {'type' : RUN_FAILED, 'errors' : errors}
         )
         # Returned refreshed verion of the handle
@@ -683,28 +861,38 @@ class ModelRunHandle(ModelRunDescriptor):
 
     def update_state_success(self, model_output):
         """Update the state of the model run to 'SUCCESS'. Expects a model
-        result identifier.
+        output result file. Will upload the file before changing the model
+        run state.
 
         Raises an exception if update fails or resource is unknown.
 
         Parameters
         ----------
         model_output : string
-            Identifier of fMRI data object
+            Path to model run output file
 
         Returns
         -------
         ModelRunHandle
             Refreshed run handle.
         """
-        # Update state to active
-        self.update_state(
-            self.links[REF_UPDATE_STATE],
-            {'type' : RUN_SUCCESS, 'modelOutput' : model_output}
+        # Upload model output
+        response = requests.post(
+            self.links[REF_UPDATE_STATE_SUCCESS],
+            files={'file': open(model_output, 'rb')}
         )
+        if response.status_code != 200:
+            try:
+                raise ValueError(json.loads(response.text)['message'])
+            except ValueError as ex:
+                raise ValueError('invalid state change: ' + str(response.text))
         # Returned refreshed verion of the handle
         return self.refresh()
 
+
+# ------------------------------------------------------------------------------
+# Subjects
+# ------------------------------------------------------------------------------
 
 class SubjectHandle(ResourceHandle):
     """Resource handle for SCO subject resource on local disk. Downloads the
@@ -729,10 +917,10 @@ class SubjectHandle(ResourceHandle):
         super(SubjectHandle, self).__init__(json_obj)
         # Set the data directory. If directory does not exist, create it,
         # download the resource data archive, and unpack into data directory
-        self.data_dir = os.path.abspath(os.path.join(base_dir, 'data'))
-        if not os.path.isdir(self.data_dir):
+        self.data_directory = os.path.abspath(os.path.join(base_dir, 'data'))
+        if not os.path.isdir(self.data_directory):
             # Create data dir and temporary directory to extract downloaded file
-            os.mkdir(self.data_dir)
+            os.mkdir(self.data_directory)
             temp_dir = tempfile.mkdtemp()
             # Download tar-archive and unpack into temp_dir
             tmp_file, f_suffix = download_file(self.links[REF_DOWNLOAD])
@@ -742,7 +930,7 @@ class SubjectHandle(ResourceHandle):
             except (tarfile.ReadError, IOError) as err:
                 # Clean up in case there is an error during extraction
                 shutil.rmtree(temp_dir)
-                shutil.rmtree(self.data_dir)
+                shutil.rmtree(self.data_directory)
                 raise ValueError(str(err))
             # Remove downloaded file
             os.remove(tmp_file)
@@ -751,14 +939,14 @@ class SubjectHandle(ResourceHandle):
             if not freesurf_dir:
                 # Clean up before raising an exception
                 shutil.rmtree(temp_dir)
-                shutil.rmtree(self.data_dir)
+                shutil.rmtree(self.data_directory)
                 raise ValueError('not a valid subject directory')
             # Move all sub-folders from the Freesurfer directory to the new anatomy
             # data directory
             for f in os.listdir(freesurf_dir):
                 sub_folder = os.path.join(freesurf_dir, f)
                 if os.path.isdir(sub_folder):
-                    shutil.move(sub_folder, self.data_dir)
+                    shutil.move(sub_folder, self.data_directory)
             # Remove temporary directory
             shutil.rmtree(temp_dir)
 

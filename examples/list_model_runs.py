@@ -1,8 +1,6 @@
 """List model runs for all experiments in the API."""
 
 import os
-import sys
-sys.path.insert(0, os.path.abspath('..'))
 
 import scocli
 import scocli.scoserv as scoserv

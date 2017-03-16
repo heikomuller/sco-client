@@ -6,6 +6,7 @@ Web Servers.
 
 import atexit
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -345,6 +346,49 @@ class SCOClient(object):
         """
         # Send state update request.
         return self.experiments_runs_get(resource_url).update_state_active()
+
+    def experiments_runs_update_state_error(self, resource_url, errors):
+        """Update state of model run resource at given Url to 'FAILED'. Set
+        error messages.
+
+        Parameters
+        ----------
+        resource_url : string
+            Url for model run resource at SCO-API
+        errors : List(string)
+            List of error messages
+
+        Returns
+        -------
+        scoserv.ModelRunHandle
+            Handle for local copy of model run resource
+        """
+        # Send state update request.
+        return self.experiments_runs_get(resource_url).update_state_error(
+            errors
+        )
+
+    def experiments_runs_update_state_success(self, resource_url, model_output):
+        """Update state of model run resource at given Url to 'SUCCESS'. Creates
+        a resource for the given model output before updating the model run
+        state.
+
+        Parameters
+        ----------
+        resource_url : string
+            Url for model run resource at SCO-API
+        model_output : string
+            Path to model run output file
+
+        Returns
+        -------
+        scoserv.ModelRunHandle
+            Handle for local copy of model run resource
+        """
+        # Send state update request.
+        return self.experiments_runs_get(resource_url).update_state_success(
+            model_output
+        )
 
 
     # --------------------------------------------------------------------------

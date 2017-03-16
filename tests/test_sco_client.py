@@ -2,8 +2,6 @@ import os
 import sys
 import unittest
 
-sys.path.insert(0, os.path.abspath('..'))
-
 import scocli
 
 API_URL = 'http://localhost:5000/sco-server/api/v1'
@@ -34,7 +32,7 @@ class TestSCOClient(unittest.TestCase):
             properties={'name' : 'AutoUploadImages'}
         )
         self.assertIsNotNone(image_group)
-        self.assertEqual(image_group.options['stimulus_edge_value'], 0.9)
+        self.assertEqual(image_group.options['stimulus_edge_value'].value, 0.9)
         self.assertEqual(image_group.name, 'AutoUploadImages')
 
     def test_create_image_group_with_invalid_file(self):
