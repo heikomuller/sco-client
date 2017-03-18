@@ -270,10 +270,12 @@ class ExperimentHandle(ResourceHandle):
         """
         return self.sco.image_groups_get(self.image_group_url)
 
-    def run(self, name, arguments={}, properties=None):
+    def run(self, model_id, name, arguments={}, properties=None):
         """Create a new model run with given name, arguments, and properties.
         Parameters
         ----------
+        model_id : string
+            Unique model identifier
         name : string
             User-defined name for experiment
         arguments : Dictionary
@@ -287,6 +289,7 @@ class ExperimentHandle(ResourceHandle):
             Handle for local copy of created model run resource
         """
         return self.sco.experiments_runs_create(
+            model_id,
             name,
             self.links[REF_EXPERIMENTS_RUNS_CREATE],
             arguments=arguments,
@@ -719,13 +722,15 @@ class ModelRunHandle(ModelRunDescriptor):
                 self.result_file = os.path.join(data_dir, filename)
 
     @staticmethod
-    def create(url, name, arguments, properties=None):
+    def create(url, model_id, name, arguments, properties=None):
         """Create a new model run using the given SCO-API create model run Url.
 
         Parameters
         ----------
         url : string
             Url to POST model run create model run request
+        model_id : string
+            Unique model identifier
         name : string
             User-defined name for model run
         arguments : Dictionary
@@ -748,6 +753,7 @@ class ModelRunHandle(ModelRunDescriptor):
             raise ValueError('invalid argument set')
         # Create request body and send POST request to given Url
         body = {
+            'model' : model_id,
             'name' : name,
             'arguments' : obj_args,
         }

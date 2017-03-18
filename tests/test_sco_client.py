@@ -26,13 +26,13 @@ class TestSCOClient(unittest.TestCase):
         image_group = self.sco.image_groups_create(
             os.path.join(DATA_DIR, 'images/images.tar.gz'),
             options={
-                'stimulus_pixels_per_degree' : 1,
-                'stimulus_edge_value' : 0.9
+                'pixels_per_degree' : 1,
+                'aperture_edge_width' : 0.9
             },
             properties={'name' : 'AutoUploadImages'}
         )
         self.assertIsNotNone(image_group)
-        self.assertEqual(image_group.options['stimulus_edge_value'].value, 0.9)
+        self.assertEqual(image_group.options['aperture_edge_width'].value, 0.9)
         self.assertEqual(image_group.name, 'AutoUploadImages')
 
     def test_create_image_group_with_invalid_file(self):

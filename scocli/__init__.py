@@ -251,11 +251,13 @@ class SCOClient(object):
     # Model Runs
     # --------------------------------------------------------------------------
 
-    def experiments_runs_create(self, name, api_url, arguments={}, properties=None):
+    def experiments_runs_create(self, model_id, name, api_url, arguments={}, properties=None):
         """Create a new model run at the given SCO-API.
 
         Parameters
         ----------
+        model_id : string
+            Unique model identifier
         name : string
             User-defined name for experiment
         api_url : string
@@ -274,6 +276,7 @@ class SCOClient(object):
         return self.experiments_runs_get(
             sco.ModelRunHandle.create(
                 api_url,
+                model_id,
                 name,
                 arguments,
                 properties=properties

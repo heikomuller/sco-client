@@ -27,7 +27,7 @@ class TestSCOClient(unittest.TestCase):
             image_group.identifier,
             properties={'comment':'Experiment created automatically to test model run update state'}
         )
-        run = experiment.run('Test Run', arguments={'max_eccentricity':11})
+        run = experiment.run('benson17', 'Test Run', arguments={'max_eccentricity':11})
         self.assertTrue(run.state.is_idle)
         run = run.update_state_active()
         self.assertTrue(run.state.is_running)
@@ -49,7 +49,7 @@ class TestSCOClient(unittest.TestCase):
             image_group.identifier,
             properties={'comment':'Experiment created automatically to test model run update state'}
         )
-        run = experiment.run('Test Run', arguments={'max_eccentricity':11})
+        run = experiment.run('benson17', 'Test Run', arguments={'max_eccentricity':11})
         self.assertTrue(run.state.is_idle)
         run = run.update_state_active()
         self.assertTrue(run.state.is_running)
