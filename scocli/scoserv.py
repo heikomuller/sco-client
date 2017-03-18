@@ -651,6 +651,8 @@ class ModelRunHandle(ModelRunDescriptor):
         Dictionary of arguments for the model run
     experiment_url : string
         Url for associated experiment
+    model_id : string
+        Unique model identifier
     schedule : Dictionary(datetime)
         Dictionary of timestamps for run events
     errors : List(string), Optional
@@ -672,6 +674,8 @@ class ModelRunHandle(ModelRunDescriptor):
         super(ModelRunHandle, self).__init__(json_obj)
         # Maintain reference to SCO client to access experiment
         self.sco = sco
+        # Set model identifier
+        self.model_id = json_obj['model']
         # Create list of arguments for model run
         # Set image group options
         self.arguments = {}
