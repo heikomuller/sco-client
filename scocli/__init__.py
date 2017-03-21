@@ -13,7 +13,8 @@ import tempfile
 import uuid
 
 import scoserv as sco
-from scoserv import ExperimentHandle, ImageGroupHandle, ModelRunHandle, SubjectHandle
+from scoserv import ExperimentHandle, FunctionalDataHandle, ImageGroupHandle
+from scoserv import ModelRunHandle, SubjectHandle
 
 
 # ------------------------------------------------------------------------------
@@ -23,7 +24,7 @@ from scoserv import ExperimentHandle, ImageGroupHandle, ModelRunHandle, SubjectH
 # ------------------------------------------------------------------------------
 
 # Url of default SCO Web API hosted at NYU
-DEFAULT_API = 'http://cds-swg1.cims.nyu.edu:5000/sco-server/api/v1'
+DEFAULT_API = 'http://cds-swg1.cims.nyu.edu/sco-server/api/v1'
 
 
 # ------------------------------------------------------------------------------
@@ -248,10 +249,63 @@ class SCOClient(object):
         )
 
     # --------------------------------------------------------------------------
+    # Functional Data
+    # --------------------------------------------------------------------------
+
+    def experiments_fmri_create(self, experiment_url, data_file):
+        """Upload given data file as fMRI for experiment with given Url.
+
+        Parameters
+        ----------
+        experiment_url : string
+            Url for experiment resource
+        data_file: Abs. Path to file on disk
+            Functional data file
+
+        Returns
+        -------
+        scoserv.FunctionalDataHandle
+            Handle to created fMRI resource
+        """
+        # Get the experiment
+        experiment = self.experiments_get(experiment_url)
+        # Upload data
+        FunctionalDataHandle.create(
+            experiment.links[sco.REF_EXPERIMENTS_FMRI_CREATE],
+            data_file
+        )
+        # Get new fmri data handle and return it
+        return self.experiments_get(experiment_url).fmri_data
+
+    def experiments_fmri_get(self, resource_url):
+        """Get handle for functional fMRI resource at given Url.
+
+        Parameters
+        ----------
+        resource_url : string
+            Url for fMRI resource at SCO-API
+
+        Returns
+        -------
+        scoserv.FunctionalDataHandle
+            Handle for funcrional MRI data resource
+        """
+        # Get resource directory, Json representation, active flag, and cache id
+        obj_dir, obj_json, is_active, cache_id = self.get_object(resource_url)
+        # Create image group handle. Will raise an exception if resource is not
+        # in cache and cannot be downloaded.
+        fmri_data = FunctionalDataHandle(obj_json, obj_dir)
+        # Add resource to cache if not exists
+        if not cache_id in self.cache:
+            self.cache_add(resource_url, cache_id)
+        # Return functional data handle
+        return fmri_data
+
+    # --------------------------------------------------------------------------
     # Model Runs
     # --------------------------------------------------------------------------
 
-    def experiments_runs_create(self, model_id, name, api_url, arguments={}, properties=None):
+    def experiments_predictions_create(self, model_id, name, api_url, arguments={}, properties=None):
         """Create a new model run at the given SCO-API.
 
         Parameters
@@ -283,7 +337,7 @@ class SCOClient(object):
             )
         )
 
-    def experiments_runs_get(self, resource_url):
+    def experiments_predictions_get(self, resource_url):
         """Get handle for model run resource at given Url.
 
         Parameters
@@ -307,7 +361,7 @@ class SCOClient(object):
         # Return model run handle
         return run
 
-    def experiments_runs_list(self, listing_url, offset=0, limit=-1, properties=None):
+    def experiments_predictions_list(self, listing_url, offset=0, limit=-1, properties=None):
         """Get list of experiment resources from a SCO-API.
 
         Parameters
@@ -334,7 +388,7 @@ class SCOClient(object):
             properties=properties
         )
 
-    def experiments_runs_update_state_active(self, resource_url):
+    def experiments_predictions_update_state_active(self, resource_url):
         """Update state of model run resource at given Url to 'ACTIVE'.
 
         Parameters
@@ -350,7 +404,7 @@ class SCOClient(object):
         # Send state update request.
         return self.experiments_runs_get(resource_url).update_state_active()
 
-    def experiments_runs_update_state_error(self, resource_url, errors):
+    def experiments_predictions_update_state_error(self, resource_url, errors):
         """Update state of model run resource at given Url to 'FAILED'. Set
         error messages.
 
@@ -371,7 +425,7 @@ class SCOClient(object):
             errors
         )
 
-    def experiments_runs_update_state_success(self, resource_url, model_output):
+    def experiments_predictions_update_state_success(self, resource_url, model_output):
         """Update state of model run resource at given Url to 'SUCCESS'. Creates
         a resource for the given model output before updating the model run
         state.

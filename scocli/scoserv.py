@@ -19,10 +19,16 @@ import urllib2
 #
 # ------------------------------------------------------------------------------
 
+"""Resource properties."""
+# Name of the functional data file in a fMRI resource archive
+PROPERTY_FUNCDATAFILE = 'funcdatafile'
+
 """HATEOAS reference keys."""
 
 # SCO-API create experiment
 REF_EXPERIMENTS_CREATE = 'experiments.create'
+# SCO-API Upload fMRI for experiment
+REF_EXPERIMENTS_FMRI_CREATE = 'fmri.upload'
 # SCO-API experiments listing
 REF_EXPERIMENTS_LISTING = 'experiments.list'
 # SCO-API list experiments runs
@@ -260,6 +266,22 @@ class ExperimentHandle(ResourceHandle):
         return references_to_dict(json.load(response)['links'])[REF_SELF]
 
     @property
+    def fmri_data(self):
+        """Functional MRI data resource that is associated with this experiment.
+        The result is None if no fMRI data has been associated with the
+        experiment.
+
+        Returns
+        -------
+        FunctionalDataHandle
+            Handle for associated funcrional MRI data resource
+        """
+        if not self.fmri_url is None:
+            return self.sco.experiments_fmri_get(self.fmri_url)
+        else:
+            return None
+
+    @property
     def image_group(self):
         """Image group resource that is associated with this experiment.
 
@@ -288,7 +310,7 @@ class ExperimentHandle(ResourceHandle):
         scoserv.ModelRunHandle
             Handle for local copy of created model run resource
         """
-        return self.sco.experiments_runs_create(
+        return self.sco.experiments_predictions_create(
             model_id,
             name,
             self.links[REF_EXPERIMENTS_RUNS_CREATE],
@@ -331,6 +353,95 @@ class ExperimentHandle(ResourceHandle):
             Handle for associated subject resource
         """
         return self.sco.subjects_get(self.subject_url)
+
+
+# ------------------------------------------------------------------------------
+# Functional Data
+# ------------------------------------------------------------------------------
+
+class FunctionalDataHandle(ResourceHandle):
+    """Resource handle for SCO functional data resource on local disk. Downloads
+    the functional data tar-file (on first access) and copies the contained
+    files into the resource's data directory.
+
+    Attributes
+    ----------
+    data_directory : string
+        (Absolute) Path to directory containing unpacked data files
+    data_files : Dictionary
+        Dictionary of files in the uploaded archive. Dictionary keys are file
+        names.
+    func_data_file : string
+	   (Absolute) Path to main functional data file (identified by file
+       suffix mgh/mgz or nii/nii.gz).
+    """
+    def __init__(self, json_obj, base_dir):
+        """Initialize functional data handle.
+
+        Parameters
+        ----------
+        json_obj : Json-like object
+            Json object containing resource description
+        base_dir : string
+            Path to cache base directory for object
+        """
+        super(FunctionalDataHandle, self).__init__(json_obj)
+        # Set the data directory. If directory does not exist, create it.
+        # Download the data file into a temporary directory and unpack the
+        # contents of the downloaded archive into the data directory.
+        self.data_directory = os.path.abspath(os.path.join(base_dir, 'data'))
+        if not os.path.isdir(self.data_directory):
+            os.mkdir(self.data_directory)
+            # Download tar-archive and unpack into data_dir
+            tmp_file, f_suffix = download_file(self.links[REF_DOWNLOAD])
+            try:
+                tf = tarfile.open(name=tmp_file, mode='r')
+                tf.extractall(path=self.data_directory)
+            except (tarfile.ReadError, IOError) as err:
+                # Clean up in case there is an error during extraction
+                shutil.rmtree(self.data_directory)
+                raise ValueError(str(err))
+            # Remove downloaded file
+            os.remove(tmp_file)
+        # Create list of files in the data directory. The name of the functional
+        # data file is expected to be stored as object property FUNCDATAFILE.
+        self.data_files = dict()
+        for filename in os.listdir(self.data_directory):
+            abs_path = os.path.join(self.data_directory, filename)
+            if filename == self.properties[PROPERTY_FUNCDATAFILE]:
+                self.func_data_file = abs_path
+            if not os.path.isdir(abs_path):
+                # Ignore files in sub-directories for now
+                self.data_files[filename] = abs_path
+
+    @staticmethod
+    def create(url, filename):
+        """Create new fMRI for given experiment by uploading local file.
+        Expects an tar-archive.
+
+        Parameters
+        ----------
+        url : string
+            Url to POST fMRI create request
+        filename : string
+            Path to tar-archive on local disk
+
+        Returns
+        -------
+        string
+            Url of created functional data resource
+        """
+        # Ensure that the file has valid suffix
+        if not has_tar_suffix(filename):
+            raise ValueError('invalid file suffix: ' + filename)
+        # Upload file to create fMRI resource. If response is not 201 the
+        # uploaded file is not a valid functional data archive
+        files = {'file': open(filename, 'rb')}
+        response = requests.post(url, files=files)
+        if response.status_code != 201:
+            raise ValueError('invalid file: ' + filename)
+        # Return HATEOAS self references from successful response
+        return references_to_dict(response.json()['links'])[REF_SELF]
 
 
 # ------------------------------------------------------------------------------
@@ -800,7 +911,7 @@ class ModelRunHandle(ModelRunDescriptor):
         ModelRunHandle
             Refreshed run handle.
         """
-        return self.sco.experiments_runs_get(self.url)
+        return self.sco.experiments_predictions_get(self.url)
 
     @staticmethod
     def update_state(url, state_obj):
@@ -909,7 +1020,6 @@ class SubjectHandle(ResourceHandle):
     subject tar-file (on first access) and copies the contained FreeSurfer
     directory into the resource's data directory.
 
-
     Attributes
     ----------
     data_dir : string
@@ -917,6 +1027,7 @@ class SubjectHandle(ResourceHandle):
     """
     def __init__(self, json_obj, base_dir):
         """Initialize subject handle.
+
         Parameters
         ----------
         json_obj : Json-like object

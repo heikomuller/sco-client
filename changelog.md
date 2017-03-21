@@ -14,3 +14,9 @@
 
 * Add model identifier to run handle
 * Adjust client to new format for model run requests and responses
+
+### 0.4.0 - 2017-03-20
+
+* Adjust some API function names to those in the SCO datastore
+* Add handle for functional data files
+* Add function to upload experiment fMRI data
