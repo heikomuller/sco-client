@@ -12,8 +12,10 @@ class TestSCOClient(unittest.TestCase):
 
     def setUp(self):
         """Initialize the SCO Client. Assumes that defautl Web API is active."""
-        self.RESULT_FILE = os.path.join(DATA_DIR, 'result.tar.gz')
-        self.sco = scocli.SCOClient(api_url=API_URL)
+        self.SUBJECT_FILE = os.path.join(DATA_DIR, 'subjects/kay2008_subj1.tar.gz')
+        self.IMAGES_FILE = os.path.join(DATA_DIR, 'images/sample_images.tar.gz')
+        self.FMRI_FILE = os.path.join(DATA_DIR, 'fmris/sample.nii.gz')
+        self.sco = scocli.SCOClient(api_url=API_URL, data_dir=DATA_DIR + '/sco')
 
     def test_create_error_run(self):
         """Test SCO client update state method. Create new experiment run and

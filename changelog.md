@@ -20,3 +20,8 @@
 * Adjust some API function names to those in the SCO datastore
 * Add handle for functional data files
 * Add function to upload experiment fMRI data
+
+### 0.5.0 - 2017-06-29
+
+* Adjust to changes in the API (sco-server 0.7.0)
+* Add SCO model resources

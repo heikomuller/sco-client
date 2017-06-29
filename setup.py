@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='sco-client',
-    version='0.4.0',
+    version='0.5.0',
     description='Library to interact with Standard Cortical Observer Web API',
     keywords='neuroscience vision cortex ',
     author='Heiko Mueller',
@@ -13,6 +13,10 @@ setup(
     license='GPLv3',
     packages=['scocli'],
     package_data={'': ['LICENSE']},
-    install_requires=['python-dateutil',
-                      'requests']
+    install_requires=[
+        'python-dateutil',
+        'requests',
+        'sco-datastore',
+        'sco-engine'
+    ]
 )

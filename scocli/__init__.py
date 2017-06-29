@@ -13,8 +13,12 @@ import tempfile
 import uuid
 
 import scoserv as sco
-from scoserv import ExperimentHandle, FunctionalDataHandle, ImageGroupHandle
-from scoserv import ModelRunHandle, SubjectHandle
+from experiment import ExperimentHandle
+from funcdata import FunctionalDataHandle
+from image import ImageGroupHandle
+from model import ModelHandle
+from modelrun import ModelRunHandle
+from subject import SubjectHandle
 
 
 # ------------------------------------------------------------------------------
@@ -24,7 +28,7 @@ from scoserv import ModelRunHandle, SubjectHandle
 # ------------------------------------------------------------------------------
 
 # Url of default SCO Web API hosted at NYU
-DEFAULT_API = 'http://cds-swg1.cims.nyu.edu/sco-server/api/v1'
+DEFAULT_API = 'http://cds-jaw.cims.nyu.edu/sco-server/api/v1'
 
 
 # ------------------------------------------------------------------------------
@@ -186,7 +190,7 @@ class SCOClient(object):
         """
         # Create experiment and return handle for created resource
         return self.experiments_get(
-            sco.ExperimentHandle.create(
+            ExperimentHandle.create(
                 self.get_api_references(api_url)[sco.REF_EXPERIMENTS_CREATE],
                 name,
                 subject_id,
@@ -327,8 +331,8 @@ class SCOClient(object):
             Handle for local copy of created model run resource
         """
         # Create experiment and return handle for created resource
-        return self.experiments_runs_get(
-            sco.ModelRunHandle.create(
+        return self.experiments_predictions_get(
+            ModelRunHandle.create(
                 api_url,
                 model_id,
                 name,
@@ -402,7 +406,7 @@ class SCOClient(object):
             Handle for local copy of model run resource
         """
         # Send state update request.
-        return self.experiments_runs_get(resource_url).update_state_active()
+        return self.experiments_predictions_get(resource_url).update_state_active()
 
     def experiments_predictions_update_state_error(self, resource_url, errors):
         """Update state of model run resource at given Url to 'FAILED'. Set
@@ -421,7 +425,7 @@ class SCOClient(object):
             Handle for local copy of model run resource
         """
         # Send state update request.
-        return self.experiments_runs_get(resource_url).update_state_error(
+        return self.experiments_predictions_get(resource_url).update_state_error(
             errors
         )
 
@@ -443,7 +447,7 @@ class SCOClient(object):
             Handle for local copy of model run resource
         """
         # Send state update request.
-        return self.experiments_runs_get(resource_url).update_state_success(
+        return self.experiments_predictions_get(resource_url).update_state_success(
             model_output
         )
 
@@ -539,7 +543,7 @@ class SCOClient(object):
         """
         # Create image group and return handle for created resource
         return self.image_groups_get(
-            sco.ImageGroupHandle.create(
+            ImageGroupHandle.create(
                 self.get_api_references(api_url)[sco.REF_IMAGE_GROUPS_CREATE],
                 filename,
                 options,
@@ -601,6 +605,62 @@ class SCOClient(object):
         )
 
     # --------------------------------------------------------------------------
+    # Models
+    # --------------------------------------------------------------------------
+
+    def models_get(self, resource_url):
+        """Get handle for model resource at given Url.
+
+        Parameters
+        ----------
+        resource_url : string
+            Url for subject resource at SCO-API
+
+        Returns
+        -------
+        models.ModelHandle
+            Handle for local copy of subject resource
+        """
+        # Get resource directory, Json representation, active flag, and cache id
+        obj_dir, obj_json, is_active, cache_id = self.get_object(resource_url)
+        # Create model handle.
+        model = ModelHandle(obj_json)
+        # Add resource to cache if not exists
+        if not cache_id in self.cache:
+            self.cache_add(resource_url, cache_id)
+        # Return subject handle
+        return model
+
+    def models_list(self, api_url=None, offset=0, limit=-1, properties=None):
+        """Get list of model resources from a SCO-API.
+
+        Parameters
+        ----------
+        api_url : string, optional
+            Base Url of the SCO-API. Uses default API if argument not present.
+        offset : int, optional
+            Starting offset for returned list items
+        limit : int, optional
+            Limit the number of items in the result
+        properties : List(string)
+            List of additional object properties to be included for items in
+            the result
+
+        Returns
+        -------
+        List(scoserv.ResourceHandle)
+            List of resource handles (one per model in the listing)
+        """
+        # Get subject listing Url for given SCO-API and return the retrieved
+        # resource listing
+        return sco.get_resource_listing(
+            self.get_api_references(api_url)[sco.REF_MODELS_LIST],
+            offset,
+            limit,
+            properties
+        )
+
+    # --------------------------------------------------------------------------
     # Subjects
     # --------------------------------------------------------------------------
 
@@ -624,7 +684,7 @@ class SCOClient(object):
         """
         # Create image group and return handle for created resource
         return self.subjects_get(
-            sco.SubjectHandle.create(
+            SubjectHandle.create(
                 self.get_api_references(api_url)[sco.REF_SUBJECTS_CREATE],
                 filename,
                 properties
