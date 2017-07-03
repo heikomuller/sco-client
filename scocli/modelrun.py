@@ -256,7 +256,7 @@ class ModelRunHandle(ModelRunDescriptor):
             self.errors = json_obj['errors']
         elif self.state.is_success:
             # Name of the result data file
-            filename = json_obj['model']['outputs']['prediction']
+            filename = json_obj['model']['outputs']['prediction']['filename']
             if not os.path.isdir(self.data_dir):
                 os.mkdir(self.data_dir)
             self.result_file = os.path.join(self.data_dir, filename)

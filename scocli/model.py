@@ -25,8 +25,8 @@ class ModelHandle(ResourceHandle):
         """
         super(ModelHandle, self).__init__(json_obj)
         # Create model output descriptions
-        self.outputs = ModelOutputs.from_json(json_obj['outputs'])
+        self.outputs = ModelOutputs.from_dict(json_obj['outputs'])
         # Create list of model parameter definitions
         self.parameters = [
-            AttributeDefinition.from_json(el) for el in json_obj['parameters']
+            AttributeDefinition.from_dict(el) for el in json_obj['parameters']
         ]

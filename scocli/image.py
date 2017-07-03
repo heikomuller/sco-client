@@ -25,7 +25,7 @@ class GroupImage(object):
         (Sub-)folder in the grouop (default: /)
     name : string
         Image name (unique within the folder)
-    data_file : string
+    filename : string
         Path to image file on local disk
     """
     def __init__(self, identifier, folder, name, filename):
@@ -45,7 +45,7 @@ class GroupImage(object):
         self.identifier = identifier
         self.folder = folder
         self.name = name
-        self.data_file = filename
+        self.filename = filename
 
 
 class ImageGroupHandle(ResourceHandle):

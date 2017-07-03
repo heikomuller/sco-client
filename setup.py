@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='sco-client',
-    version='0.5.0',
+    version='0.5.1',
     description='Library to interact with Standard Cortical Observer Web API',
     keywords='neuroscience vision cortex ',
     author='Heiko Mueller',

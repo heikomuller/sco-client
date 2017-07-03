@@ -25,3 +25,7 @@
 
 * Adjust to changes in the API (sco-server 0.7.0)
 * Add SCO model resources
+
+### 0.5.1 - 2017-07-03
+
+* Adjust to changes in AttributeDefinition and bug fixing
